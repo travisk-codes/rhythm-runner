@@ -19,6 +19,14 @@
     { label: '30m', ms: 1800000 },
   ];
 
+  // Subdivision multipliers relative to quarter note
+  const SUBDIVISIONS = [
+    { id: 'half', multiplier: 2 },
+    { id: 'quarter', multiplier: 1 },
+    { id: 'eighth', multiplier: 0.5 },
+    { id: 'sixteenth', multiplier: 0.25 },
+  ];
+
   // --- State ---
   let running = false;
   let bpm = 120;
@@ -27,9 +35,11 @@
   let totalHits = 0;
   let totalMisses = 0;
   let beatIdCounter = 0;
-  let nextBeatTime = 0;
+  let nextSlotTime = 0;     // next 16th-note slot time
+  let slotIndex = 0;        // which 16th-note slot we're on (0-based)
   let animFrameId = null;
   let audioCtx = null;
+  let subdivisionFreqs = { half: 0, quarter: 100, eighth: 0, sixteenth: 0 };
 
   // --- DOM ---
   const track = document.getElementById('track');
@@ -41,7 +51,20 @@
   const bpmInput = document.getElementById('bpm');
   const startBtn = document.getElementById('start-btn');
   const stopBtn = document.getElementById('stop-btn');
+  const resetBtn = document.getElementById('reset-btn');
   const midiStatus = document.getElementById('midi-status');
+
+  // Subdivision sliders
+  const freqSliders = {};
+  SUBDIVISIONS.forEach(sub => {
+    const slider = document.getElementById(`freq-${sub.id}`);
+    const valSpan = document.querySelector(`.freq-val[data-for="freq-${sub.id}"]`);
+    freqSliders[sub.id] = { slider, valSpan };
+    slider.addEventListener('input', () => {
+      subdivisionFreqs[sub.id] = parseInt(slider.value);
+      valSpan.textContent = slider.value + '%';
+    });
+  });
 
   // --- Init average cards ---
   const avgCards = {};
@@ -107,7 +130,79 @@
     osc.stop(audioCtx.currentTime + 0.2);
   }
 
+  // Metronome click on every beat
+  function playMetronomeClick(subdivision) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    // Higher pitch for downbeats, lower for subdivisions
+    if (subdivision === 'quarter' || subdivision === 'half') {
+      osc.frequency.value = 1000;
+    } else if (subdivision === 'eighth') {
+      osc.frequency.value = 800;
+    } else {
+      osc.frequency.value = 650;
+    }
+
+    osc.type = 'triangle';
+    gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.05);
+  }
+
+  // Schedule a metronome click at a precise future time
+  function scheduleMetronomeClick(targetTime, subdivision) {
+    if (!audioCtx) return;
+    const delay = (targetTime - performance.now()) / 1000;
+    if (delay < 0) return;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (subdivision === 'quarter' || subdivision === 'half') {
+      osc.frequency.value = 1000;
+    } else if (subdivision === 'eighth') {
+      osc.frequency.value = 800;
+    } else {
+      osc.frequency.value = 650;
+    }
+
+    osc.type = 'triangle';
+    const startAt = audioCtx.currentTime + delay;
+    gain.gain.setValueAtTime(0.06, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.05);
+    osc.start(startAt);
+    osc.stop(startAt + 0.05);
+  }
+
   // --- Beat management ---
+  // Determine which subdivisions land on a given 16th-note slot index
+  function shouldSpawnAtSlot(slot) {
+    // slot is 0-based index of 16th notes within the measure
+    // 16th: every slot, 8th: every 2, quarter: every 4, half: every 8
+    const candidates = [];
+    if (slot % 8 === 0 && subdivisionFreqs.half > 0) {
+      if (Math.random() * 100 < subdivisionFreqs.half) candidates.push('half');
+    }
+    if (slot % 4 === 0 && subdivisionFreqs.quarter > 0) {
+      if (Math.random() * 100 < subdivisionFreqs.quarter) candidates.push('quarter');
+    }
+    if (slot % 2 === 0 && subdivisionFreqs.eighth > 0) {
+      // Don't double-spawn if already covered by quarter
+      if (!candidates.length && Math.random() * 100 < subdivisionFreqs.eighth) candidates.push('eighth');
+    }
+    if (subdivisionFreqs.sixteenth > 0) {
+      if (!candidates.length && Math.random() * 100 < subdivisionFreqs.sixteenth) candidates.push('sixteenth');
+    }
+    return candidates;
+  }
+
   function spawnBeat(targetTime) {
     const el = document.createElement('div');
     el.className = 'beat';
@@ -288,10 +383,16 @@
 
     const now = performance.now();
 
-    // Spawn beats on schedule
-    while (nextBeatTime <= now + TRAVEL_TIME_MS) {
-      spawnBeat(nextBeatTime);
-      nextBeatTime += (60000 / bpm);
+    // Spawn beats on 16th-note grid schedule
+    const sixteenthMs = (60000 / bpm) / 4;
+    while (nextSlotTime <= now + TRAVEL_TIME_MS) {
+      const subs = shouldSpawnAtSlot(slotIndex);
+      if (subs.length > 0) {
+        spawnBeat(nextSlotTime);
+        scheduleMetronomeClick(nextSlotTime, subs[0]);
+      }
+      nextSlotTime += sixteenthMs;
+      slotIndex++;
     }
 
     updateBeats(now);
@@ -320,6 +421,7 @@
     totalHits = 0;
     totalMisses = 0;
     beatIdCounter = 0;
+    slotIndex = 0;
     gameLoop._lastAvgUpdate = 0;
 
     // Clear track
@@ -329,7 +431,7 @@
     updateAverages();
 
     // First beat arrives at hit line after TRAVEL_TIME_MS
-    nextBeatTime = performance.now() + TRAVEL_TIME_MS;
+    nextSlotTime = performance.now() + TRAVEL_TIME_MS;
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
@@ -359,8 +461,17 @@
     }
   });
 
+  function resetStats() {
+    timingRecords = [];
+    totalHits = 0;
+    totalMisses = 0;
+    updateSessionStats();
+    updateAverages();
+  }
+
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', stop);
+  resetBtn.addEventListener('click', resetStats);
 
   // --- MIDI ---
   async function initMIDI() {

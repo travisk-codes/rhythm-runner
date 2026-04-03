@@ -35,14 +35,61 @@ h1 {
   background-clip: text;
 }
 
+.version {
+  font-size: 0.7rem;
+  -webkit-text-fill-color: #666;
+  vertical-align: super;
+}
+
 #controls {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
-#controls label {
+#controls > label {
   font-size: 0.9rem;
+}
+
+#subdivision-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+#subdivision-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #aaa;
+}
+
+#subdivision-controls input[type="range"] {
+  width: 50px;
+  height: 4px;
+  accent-color: #ffd93d;
+  cursor: pointer;
+}
+
+.freq-val {
+  font-size: 0.65rem;
+  color: #666;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#reset-btn {
+  background: #2a2a44;
+  color: #aaa;
+  font-weight: 600;
+}
+
+#reset-btn:hover {
+  background: #3a3a5a;
+  color: #e0e0e0;
 }
 
 #bpm {
