@@ -161,6 +161,9 @@
   function spawnBeat(targetTime) {
     const el = document.createElement('div');
     el.className = 'beat';
+    // Random y-position with padding to keep beats fully visible
+    const yPercent = 10 + Math.random() * 80; // 10% to 90%
+    el.style.top = yPercent + '%';
     track.appendChild(el);
 
     const beat = {
@@ -168,6 +171,7 @@
       spawnTime: targetTime - TRAVEL_TIME_MS,
       targetTime,
       element: el,
+      yPercent,
       hit: false,
       missed: false,
     };
@@ -221,20 +225,11 @@
   }
 
   // --- Scatter dots ---
-  function spawnHitDot(x, offsetMs, quality) {
+  function spawnHitDot(x, yPercent, quality) {
     const dot = document.createElement('div');
     dot.className = `hit-dot ${quality}`;
-
-    // x = horizontal pixel position on track
     dot.style.left = x + 'px';
-
-    // y = map timing offset to vertical position
-    // center (50%) = perfect, top = early, bottom = late
-    const trackHeight = track.offsetHeight;
-    const maxOffset = HIT_WINDOW_MS;
-    const yPercent = 50 + (offsetMs / maxOffset) * 45; // clamp roughly 5%-95%
-    dot.style.top = Math.max(5, Math.min(95, yPercent)) + '%';
-
+    dot.style.top = yPercent + '%';
     track.appendChild(dot);
 
     // Fade out over 30 seconds then remove
@@ -276,9 +271,9 @@
         cssClass = 'good';
       }
 
-      // Leave a scatter dot at the hit position
+      // Leave a scatter dot at the beat's position
       const beatLeft = parseFloat(closestBeat.element.style.left) || 0;
-      spawnHitDot(beatLeft + BEAT_SIZE / 2, closestOffset, cssClass);
+      spawnHitDot(beatLeft + BEAT_SIZE / 2, closestBeat.yPercent, cssClass);
 
       const direction = closestOffset < -2 ? 'early' : closestOffset > 2 ? 'late' : '';
       const dirText = direction ? ` (${Math.round(absOffset)}ms ${direction})` : '';
