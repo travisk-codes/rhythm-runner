@@ -30,13 +30,14 @@
   // --- State ---
   let running = false;
   let bpm = 120;
-  let beats = [];           // active beat objects { id, spawnTime, targetTime, element, hit, missed }
+  let beats = [];           // active beat objects { id, spawnTime, targetTime, element, hit, missed, clicked }
   let timingRecords = [];   // { timestamp, offsetMs } - positive = late, negative = early
   let totalHits = 0;
   let totalMisses = 0;
   let beatIdCounter = 0;
   let nextSlotTime = 0;     // next 16th-note slot time
   let slotIndex = 0;        // which 16th-note slot we're on (0-based)
+  let nextMetronomeTime = 0; // next quarter-note metronome tick
   let animFrameId = null;
   let audioCtx = null;
   let subdivisionFreqs = { half: 0, quarter: 100, eighth: 0, sixteenth: 0 };
@@ -130,32 +131,8 @@
     osc.stop(audioCtx.currentTime + 0.2);
   }
 
-  // Metronome click on every beat
-  function playMetronomeClick(subdivision) {
-    if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    // Higher pitch for downbeats, lower for subdivisions
-    if (subdivision === 'quarter' || subdivision === 'half') {
-      osc.frequency.value = 1000;
-    } else if (subdivision === 'eighth') {
-      osc.frequency.value = 800;
-    } else {
-      osc.frequency.value = 650;
-    }
-
-    osc.type = 'triangle';
-    gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.05);
-  }
-
-  // Schedule a metronome click at a precise future time
-  function scheduleMetronomeClick(targetTime, subdivision) {
+  // Schedule the steady BPM metronome click (plays every quarter note, independent of hit beats)
+  function scheduleMetronomeTick(targetTime) {
     if (!audioCtx) return;
     const delay = (targetTime - performance.now()) / 1000;
     if (delay < 0) return;
@@ -164,18 +141,29 @@
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(audioCtx.destination);
+    osc.frequency.value = 1200;
+    osc.type = 'sine';
+    const startAt = audioCtx.currentTime + delay;
+    gain.gain.setValueAtTime(0.04, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.03);
+    osc.start(startAt);
+    osc.stop(startAt + 0.03);
+  }
 
-    if (subdivision === 'quarter' || subdivision === 'half') {
-      osc.frequency.value = 1000;
-    } else if (subdivision === 'eighth') {
-      osc.frequency.value = 800;
-    } else {
-      osc.frequency.value = 650;
-    }
+  // Schedule the beat-arrival click (plays when a hittable beat crosses the hit line)
+  function scheduleBeatClick(targetTime) {
+    if (!audioCtx) return;
+    const delay = (targetTime - performance.now()) / 1000;
+    if (delay < 0) return;
 
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = 800;
     osc.type = 'triangle';
     const startAt = audioCtx.currentTime + delay;
-    gain.gain.setValueAtTime(0.06, startAt);
+    gain.gain.setValueAtTime(0.07, startAt);
     gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.05);
     osc.start(startAt);
     osc.stop(startAt + 0.05);
@@ -243,11 +231,13 @@
       // Check if beat has passed the hit window
       if (now > beat.targetTime + HIT_WINDOW_MS) {
         beat.missed = true;
-        beat.element.classList.add('missed');
-        totalMisses++;
-        showFeedback('MISS', 'miss');
-        playMissSound();
-        updateSessionStats();
+        if (running) {
+          beat.element.classList.add('missed');
+          totalMisses++;
+          showFeedback('MISS', 'miss');
+          playMissSound();
+          updateSessionStats();
+        }
 
         // Remove after a moment
         setTimeout(() => {
@@ -379,22 +369,31 @@
 
   // --- Game loop ---
   function gameLoop(timestamp) {
-    if (!running) return;
-
     const now = performance.now();
 
-    // Spawn beats on 16th-note grid schedule
-    const sixteenthMs = (60000 / bpm) / 4;
-    while (nextSlotTime <= now + TRAVEL_TIME_MS) {
-      const subs = shouldSpawnAtSlot(slotIndex);
-      if (subs.length > 0) {
-        spawnBeat(nextSlotTime);
-        scheduleMetronomeClick(nextSlotTime, subs[0]);
+    if (running) {
+      const quarterMs = 60000 / bpm;
+      const sixteenthMs = quarterMs / 4;
+
+      // Schedule steady metronome ticks on every quarter note
+      while (nextMetronomeTime <= now + TRAVEL_TIME_MS) {
+        scheduleMetronomeTick(nextMetronomeTime);
+        nextMetronomeTime += quarterMs;
       }
-      nextSlotTime += sixteenthMs;
-      slotIndex++;
+
+      // Spawn hittable beats on 16th-note grid + schedule their arrival clicks
+      while (nextSlotTime <= now + TRAVEL_TIME_MS) {
+        const subs = shouldSpawnAtSlot(slotIndex);
+        if (subs.length > 0) {
+          spawnBeat(nextSlotTime);
+          scheduleBeatClick(nextSlotTime);
+        }
+        nextSlotTime += sixteenthMs;
+        slotIndex++;
+      }
     }
 
+    // Always update beats (animate + play arrival clicks for beats already on screen)
     updateBeats(now);
 
     // Periodically update averages (every 500ms)
@@ -403,7 +402,12 @@
       updateAverages();
     }
 
-    animFrameId = requestAnimationFrame(gameLoop);
+    // Keep looping as long as running or beats remain on screen
+    if (running || beats.length > 0) {
+      animFrameId = requestAnimationFrame(gameLoop);
+    } else {
+      animFrameId = null;
+    }
   }
 
   // --- Start / Stop ---
@@ -432,6 +436,7 @@
 
     // First beat arrives at hit line after TRAVEL_TIME_MS
     nextSlotTime = performance.now() + TRAVEL_TIME_MS;
+    nextMetronomeTime = performance.now() + TRAVEL_TIME_MS;
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
@@ -442,10 +447,7 @@
 
   function stop() {
     running = false;
-    if (animFrameId) {
-      cancelAnimationFrame(animFrameId);
-      animFrameId = null;
-    }
+    // Don't cancel animFrame — let remaining on-screen beats continue animating and clicking
 
     startBtn.disabled = false;
     stopBtn.disabled = true;
