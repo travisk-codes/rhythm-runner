@@ -141,13 +141,13 @@
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-    osc.frequency.value = 1200;
+    osc.frequency.value = 1000;
     osc.type = 'sine';
     const startAt = audioCtx.currentTime + delay;
-    gain.gain.setValueAtTime(0.04, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.03);
+    gain.gain.setValueAtTime(0.12, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.06);
     osc.start(startAt);
-    osc.stop(startAt + 0.03);
+    osc.stop(startAt + 0.06);
   }
 
   // Schedule the beat-arrival click (plays when a hittable beat crosses the hit line)
@@ -436,7 +436,9 @@
 
     // First beat arrives at hit line after TRAVEL_TIME_MS
     nextSlotTime = performance.now() + TRAVEL_TIME_MS;
-    nextMetronomeTime = performance.now() + TRAVEL_TIME_MS;
+    // Metronome starts clicking immediately (not delayed by travel time)
+    const quarterMs = 60000 / bpm;
+    nextMetronomeTime = performance.now() + quarterMs;
 
     startBtn.disabled = true;
     stopBtn.disabled = false;
