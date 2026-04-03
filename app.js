@@ -220,6 +220,27 @@
     });
   }
 
+  // --- Scatter dots ---
+  function spawnHitDot(x, offsetMs, quality) {
+    const dot = document.createElement('div');
+    dot.className = `hit-dot ${quality}`;
+
+    // x = horizontal pixel position on track
+    dot.style.left = x + 'px';
+
+    // y = map timing offset to vertical position
+    // center (50%) = perfect, top = early, bottom = late
+    const trackHeight = track.offsetHeight;
+    const maxOffset = HIT_WINDOW_MS;
+    const yPercent = 50 + (offsetMs / maxOffset) * 45; // clamp roughly 5%-95%
+    dot.style.top = Math.max(5, Math.min(95, yPercent)) + '%';
+
+    track.appendChild(dot);
+
+    // Fade out over 30 seconds then remove
+    setTimeout(() => dot.remove(), 30000);
+  }
+
   // --- Hit detection ---
   function attemptHit() {
     if (!running) return;
@@ -254,6 +275,10 @@
         quality = 'good';
         cssClass = 'good';
       }
+
+      // Leave a scatter dot at the hit position
+      const beatLeft = parseFloat(closestBeat.element.style.left) || 0;
+      spawnHitDot(beatLeft + BEAT_SIZE / 2, closestOffset, cssClass);
 
       const direction = closestOffset < -2 ? 'early' : closestOffset > 2 ? 'late' : '';
       const dirText = direction ? ` (${Math.round(absOffset)}ms ${direction})` : '';
