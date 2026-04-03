@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rhythm Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Rhythm Runner</h1>
+      <div id="controls">
+        <label>
+          BPM: <input type="number" id="bpm" value="120" min="40" max="300" step="1">
+        </label>
+        <button id="start-btn">Start</button>
+        <button id="stop-btn" disabled>Stop</button>
+        <span id="midi-status">MIDI: not connected</span>
+      </div>
+    </header>
+
+    <div id="track-container">
+      <div id="track">
+        <div id="hit-zone"></div>
+        <div id="hit-line"></div>
+      </div>
+      <div id="feedback"></div>
+    </div>
+
+    <div id="stats">
+      <h2>Timing Accuracy</h2>
+      <div id="averages"></div>
+      <div id="session-stats">
+        <span id="hits-count">Hits: 0</span>
+        <span id="misses-count">Misses: 0</span>
+        <span id="accuracy">Accuracy: --%</span>
+      </div>
+    </div>
+
+    <div id="instructions">
+      <p>Press <kbd>Space</kbd>, <kbd>J</kbd>, <kbd>K</kbd>, or any MIDI pad to hit beats as they cross the target line.</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
