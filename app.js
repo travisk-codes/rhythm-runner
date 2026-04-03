@@ -117,20 +117,6 @@
     osc.stop(audioCtx.currentTime + 0.15);
   }
 
-  function playMissSound() {
-    if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.frequency.value = 200;
-    osc.type = 'sawtooth';
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.2);
-  }
-
   // Schedule the steady BPM metronome click (plays every quarter note, independent of hit beats)
   function scheduleMetronomeTick(targetTime) {
     if (!audioCtx) return;
@@ -148,25 +134,6 @@
     gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.06);
     osc.start(startAt);
     osc.stop(startAt + 0.06);
-  }
-
-  // Schedule the beat-arrival click (plays when a hittable beat crosses the hit line)
-  function scheduleBeatClick(targetTime) {
-    if (!audioCtx) return;
-    const delay = (targetTime - performance.now()) / 1000;
-    if (delay < 0) return;
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.frequency.value = 800;
-    osc.type = 'triangle';
-    const startAt = audioCtx.currentTime + delay;
-    gain.gain.setValueAtTime(0.07, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.05);
-    osc.start(startAt);
-    osc.stop(startAt + 0.05);
   }
 
   // --- Beat management ---
@@ -235,7 +202,7 @@
           beat.element.classList.add('missed');
           totalMisses++;
           showFeedback('MISS', 'miss');
-          playMissSound();
+
           updateSessionStats();
         }
 
@@ -386,7 +353,7 @@
         const subs = shouldSpawnAtSlot(slotIndex);
         if (subs.length > 0) {
           spawnBeat(nextSlotTime);
-          scheduleBeatClick(nextSlotTime);
+
         }
         nextSlotTime += sixteenthMs;
         slotIndex++;
